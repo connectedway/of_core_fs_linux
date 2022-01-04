@@ -49,7 +49,7 @@ typedef struct {
     OFC_CHAR *name;
     OFC_CHAR *pattern;
     DIR *dir;
-    struct dirent nextDirent;
+    struct dirent *nextDirent;
     int nextRet;
     OFC_BOOL backup;
 } OFC_FS_LINUX_CONTEXT;
@@ -479,6 +479,7 @@ static OFC_BOOL OfcFSLinuxCloseHandle(OFC_HANDLE hFile)
 
     if (status >= 0) {
       if (context->deleteOnClose) {
+	rmdir(context->name);
 	unlink(context->name);
       }
 
@@ -549,7 +550,7 @@ static OFC_BOOL GetWin32FindFileData(OFC_CHAR *asciiName,
   OFC_BOOL ret;
   OFC_TCHAR *tcharName;
 
-  ret = OFC_FALSE;
+  ret = OFC_TRUE;
   status = stat(asciiName, &sb);
   if (status == -1) {
     /*
@@ -917,7 +918,7 @@ GetWin32FileIdBothDirInfo(int fd,
   return (ret);
 }
 
-static OFC_INT read_dir (OFC_CHAR *pattern, DIR * dir, struct dirent *dirent, 
+static OFC_INT read_dir (OFC_CHAR *pattern, DIR * dir, 
 			 struct dirent **pdirent)
 {
   OFC_BOOL done ;
@@ -1010,8 +1011,7 @@ OfcFSLinuxFindFirstFile(OFC_LPCTSTR lpFileName,
     ofc_free(asciiName);
     if (context->dir != NULL) {
       context->nextRet =
-	read_dir (context->pattern, context->dir, &context->nextDirent, 
-		  &dirent) ;
+	read_dir (context->pattern, context->dir, &dirent) ;
       if (dirent == NULL) {
 	closedir(context->dir);
 	context->dir = NULL;
@@ -1029,8 +1029,8 @@ OfcFSLinuxFindFirstFile(OFC_LPCTSTR lpFileName,
 	*more = OFC_FALSE;
 
 	context->nextRet = read_dir (context->pattern, context->dir, 
-				     &context->nextDirent, &dirent) ;
-	if (dirent != NULL)
+				     &context->nextDirent);
+	if (context->nextDirent != NULL)
 	  *more = OFC_TRUE;
       }
     }
@@ -1069,20 +1069,19 @@ OfcFSLinuxFindNextFile(OFC_HANDLE hFindFile,
       {
 	ret = OFC_TRUE;
 	len = ofc_strlen(context->name) +
-	  ofc_strlen(context->nextDirent.d_name);
+	  ofc_strlen(context->nextDirent->d_name);
 	pathname = ofc_malloc(len + 2);
 	ofc_snprintf(pathname, len + 2, "%s/%s",
 		     context->name,
-		     context->nextDirent.d_name);
-	ret = GetWin32FindFileData(pathname, context->nextDirent.d_name,
+		     context->nextDirent->d_name);
+	ret = GetWin32FindFileData(pathname, context->nextDirent->d_name,
 				   lpFindFileData);
 	ofc_free(pathname);
 
 	context->nextRet = 
-	  read_dir (context->pattern, context->dir, &context->nextDirent,
-		    &dirent) ;
+	  read_dir (context->pattern, context->dir, &context->nextDirent);
 
-	if (dirent != NULL)
+	if (context->nextDirent != NULL)
 	  {
 	    *more = OFC_TRUE;
 	  }
