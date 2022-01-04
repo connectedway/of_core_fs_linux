@@ -42,6 +42,9 @@
 *.idb
 *.pdb
 
+# Emacs artifacts
+*~
+
 # Kernel Module Compile Results
 *.mod*
 *.cmd
