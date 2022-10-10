@@ -71,6 +71,10 @@ typedef struct {
     OFC_LPCVOID lpBuffer;
     OFC_DWORD nNumberOfBytes;
     OFC_INT fd;
+#if defined(OFC_PERF_STATS)
+    OFC_INT perf_id;
+    OFC_MSTIME stamp;
+#endif
 } OFC_FSLINUX_OVERLAPPED;
 
 static OFC_HANDLE OfcFSLinuxAIOFreeQ;
@@ -355,6 +359,11 @@ static OFC_BOOL OfcFSLinuxWriteFile(OFC_HANDLE hFile,
     }
 
     if (Overlapped != OFC_NULL) {
+#if defined(OFC_PERF_STATS)
+	      Overlapped->perf_id = OFC_PERF_FSSMB_WRITE ;
+	      Overlapped->stamp = 
+		ofc_perf_start (OFC_PERF_FSSMB_WRITE) ;
+#endif
       ofc_event_reset(Overlapped->hEvent);
       Overlapped->fd = context->fd;
       Overlapped->lpBuffer = lpBuffer;
@@ -372,7 +381,14 @@ static OFC_BOOL OfcFSLinuxWriteFile(OFC_HANDLE hFile,
       ofc_handle_unlock(hOverlapped);
       ret = OFC_FALSE;
     } else {
+#if defined(OFC_PERF_STATS)
+      OFC_MSTIME stamp;
+      stamp = ofc_perf_start (OFC_PERF_FSSMB_WRITE) ;
+#endif
       status = write(context->fd, lpBuffer, nNumberOfBytesToWrite);
+#if defined(OFC_PERF_STATS)
+      ofc_perf_stop (OFC_PERF_FSSMB_WRITE, stamp, status);
+#endif
 
       if (status >= 0) {
 	if (lpNumberOfBytesWritten != OFC_NULL)
@@ -415,6 +431,11 @@ static OFC_BOOL OfcFSLinuxReadFile(OFC_HANDLE hFile,
       Overlapped = ofc_handle_lock(hOverlapped);
 
     if (Overlapped != OFC_NULL) {
+#if defined(OFC_PERF_STATS)
+      Overlapped->perf_id = OFC_PERF_FSSMB_READ ;
+      Overlapped->stamp = 
+	ofc_perf_start(OFC_PERF_FSSMB_READ) ;
+#endif
       /*
        * Offset should already be set
        */
@@ -435,7 +456,14 @@ static OFC_BOOL OfcFSLinuxReadFile(OFC_HANDLE hFile,
       ofc_handle_unlock(hOverlapped);
       ret = OFC_FALSE;
     } else {
+#if defined(OFC_PERF_STATS)
+      OFC_MSTIME stamp;
+      stamp = ofc_perf_start (OFC_PERF_FSSMB_READ) ;
+#endif
       status = read(context->fd, lpBuffer, nNumberOfBytesToRead);
+#if defined(OFC_PERF_STATS)
+      ofc_perf_stop (OFC_PERF_FSSMB_READ, stamp, status);
+#endif
 
       if (status > 0) {
 	if (lpNumberOfBytesRead != OFC_NULL)
@@ -1421,6 +1449,10 @@ OfcFSLinuxGetOverlappedResult(OFC_HANDLE hFile,
 				  (OFC_DWORD_PTR)
 				  TranslateError(Overlapped->Errno));
 	} else {
+#if defined(OFC_PERF_STATS)
+	  ofc_perf_stop (Overlapped->perf_id, Overlapped->stamp,
+			 Overlapped->dwResult) ;
+#endif
 	  *lpNumberOfBytesTransferred = Overlapped->dwResult;
 	  ret = OFC_TRUE;
 	}
