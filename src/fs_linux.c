@@ -30,6 +30,9 @@
 #include "ofc/thread.h"
 #include "ofc/time.h"
 #include "ofc/process.h"
+#if defined(OFC_PERF_STATS)
+#include "ofc/perf.h"
+#endif
 
 #include "ofc/heap.h"
 #include "ofc/fs.h"
@@ -71,14 +74,16 @@ typedef struct {
     OFC_LPCVOID lpBuffer;
     OFC_DWORD nNumberOfBytes;
     OFC_INT fd;
-#if defined(OFC_PERF_STATS)
-    OFC_INT perf_id;
-    OFC_MSTIME stamp;
-#endif
 } OFC_FSLINUX_OVERLAPPED;
 
 static OFC_HANDLE OfcFSLinuxAIOFreeQ;
 static OFC_INT g_instance;
+#if defined(OFC_PERF_STATS)
+static struct perf_queue *pqueue_read;
+static struct perf_queue *pqueue_write;
+static struct perf_rt *prt_read;
+static struct perf_rt *prt_write;
+#endif
 
 /*
  * Error codes
@@ -346,6 +351,9 @@ static OFC_BOOL OfcFSLinuxWriteFile(OFC_HANDLE hFile,
   OFC_FS_LINUX_CONTEXT *context;
   OFC_FSLINUX_OVERLAPPED *Overlapped;
 
+#if defined(OFC_PERF_STATS)
+  perf_rt_start(prt_write);
+#endif
   ret = OFC_FALSE;
   context = ofc_handle_lock(hFile);
 
@@ -360,9 +368,7 @@ static OFC_BOOL OfcFSLinuxWriteFile(OFC_HANDLE hFile,
 
     if (Overlapped != OFC_NULL) {
 #if defined(OFC_PERF_STATS)
-	      Overlapped->perf_id = OFC_PERF_FSSMB_WRITE ;
-	      Overlapped->stamp = 
-		ofc_perf_start (OFC_PERF_FSSMB_WRITE) ;
+      perf_request_start(g_measurement, pqueue_write);
 #endif
       ofc_event_reset(Overlapped->hEvent);
       Overlapped->fd = context->fd;
@@ -382,19 +388,21 @@ static OFC_BOOL OfcFSLinuxWriteFile(OFC_HANDLE hFile,
       ret = OFC_FALSE;
     } else {
 #if defined(OFC_PERF_STATS)
-      OFC_MSTIME stamp;
-      stamp = ofc_perf_start (OFC_PERF_FSSMB_WRITE) ;
+      perf_request_start(g_measurement, pqueue_write);
 #endif
       status = write(context->fd, lpBuffer, nNumberOfBytesToWrite);
-#if defined(OFC_PERF_STATS)
-      ofc_perf_stop (OFC_PERF_FSSMB_WRITE, stamp, status);
-#endif
 
       if (status >= 0) {
+#if defined(OFC_PERF_STATS)
+        perf_request_stop(g_measurement, pqueue_write, status);
+#endif
 	if (lpNumberOfBytesWritten != OFC_NULL)
 	  *lpNumberOfBytesWritten = (OFC_DWORD) status;
 	ret = OFC_TRUE;
       } else {
+#if defined(OFC_PERF_STATS)
+        perf_request_stop(g_measurement, pqueue_write, 0);
+#endif
 	ofc_thread_set_variable(OfcLastError,
 				(OFC_DWORD_PTR) TranslateError(errno));
 	ret = OFC_FALSE;
@@ -405,6 +413,9 @@ static OFC_BOOL OfcFSLinuxWriteFile(OFC_HANDLE hFile,
   if (context != OFC_NULL)
     ofc_handle_unlock(hFile);
 
+#if defined(OFC_PERF_STATS)
+  perf_rt_stop(prt_write);
+#endif
   return (ret);
 }
 
@@ -419,6 +430,10 @@ static OFC_BOOL OfcFSLinuxReadFile(OFC_HANDLE hFile,
   OFC_FS_LINUX_CONTEXT *context;
   OFC_FSLINUX_OVERLAPPED *Overlapped;
 
+#if defined(OFC_PERF_STATS)
+  perf_rt_start(prt_read);
+#endif
+
   ret = OFC_FALSE;
   context = ofc_handle_lock(hFile);
 
@@ -432,9 +447,7 @@ static OFC_BOOL OfcFSLinuxReadFile(OFC_HANDLE hFile,
 
     if (Overlapped != OFC_NULL) {
 #if defined(OFC_PERF_STATS)
-      Overlapped->perf_id = OFC_PERF_FSSMB_READ ;
-      Overlapped->stamp = 
-	ofc_perf_start(OFC_PERF_FSSMB_READ) ;
+      perf_request_start(g_measurement, pqueue_read);
 #endif
       /*
        * Offset should already be set
@@ -457,19 +470,21 @@ static OFC_BOOL OfcFSLinuxReadFile(OFC_HANDLE hFile,
       ret = OFC_FALSE;
     } else {
 #if defined(OFC_PERF_STATS)
-      OFC_MSTIME stamp;
-      stamp = ofc_perf_start (OFC_PERF_FSSMB_READ) ;
+      perf_request_start(g_measurement, pqueue_read);
 #endif
       status = read(context->fd, lpBuffer, nNumberOfBytesToRead);
-#if defined(OFC_PERF_STATS)
-      ofc_perf_stop (OFC_PERF_FSSMB_READ, stamp, status);
-#endif
 
       if (status > 0) {
+#if defined(OFC_PERF_STATS)
+        perf_request_stop(g_measurement, pqueue_read, status);
+#endif
 	if (lpNumberOfBytesRead != OFC_NULL)
 	  *lpNumberOfBytesRead = (OFC_DWORD) status;
 	ret = OFC_TRUE;
       } else {
+#if defined(OFC_PERF_STATS)
+        perf_request_stop(g_measurement, pqueue_read, 0);
+#endif
 	ret = OFC_FALSE;
 	if (status == 0)
 	  ofc_thread_set_variable(OfcLastError, (OFC_DWORD_PTR)
@@ -484,6 +499,9 @@ static OFC_BOOL OfcFSLinuxReadFile(OFC_HANDLE hFile,
   if (context != OFC_NULL)
     ofc_handle_unlock(hFile);
 
+#if defined(OFC_PERF_STATS)
+  perf_rt_stop(prt_read);
+#endif
   return (ret);
 }
 
@@ -1430,6 +1448,10 @@ OfcFSLinuxGetOverlappedResult(OFC_HANDLE hFile,
   OFC_FSLINUX_OVERLAPPED *Overlapped;
   OFC_FS_LINUX_CONTEXT *context;
   OFC_BOOL ret;
+#if defined(OFC_PERF_STATS)
+  struct perf_rt *prt_overlapped;
+  struct perf_queue *pqueue_overlapped;
+#endif
 
   ret = OFC_FALSE;
   context = ofc_handle_lock(hFile);
@@ -1440,6 +1462,20 @@ OfcFSLinuxGetOverlappedResult(OFC_HANDLE hFile,
   } else {
     Overlapped = ofc_handle_lock(hOverlapped);
     if (Overlapped != OFC_NULL) {
+#if defined(OFC_PERF_STATS)
+      if (Overlapped->opcode == OFC_FSLINUX_READ)
+        {
+          prt_overlapped = prt_read;
+          pqueue_overlapped = pqueue_read;
+        }
+      else
+        {
+          prt_overlapped = prt_write;
+          pqueue_overlapped = pqueue_write;
+        }
+      perf_rt_start(prt_overlapped);
+#endif
+
       if (bWait)
 	ofc_event_wait(Overlapped->hEvent);
 
@@ -1448,10 +1484,12 @@ OfcFSLinuxGetOverlappedResult(OFC_HANDLE hFile,
 	  ofc_thread_set_variable(OfcLastError,
 				  (OFC_DWORD_PTR)
 				  TranslateError(Overlapped->Errno));
+#if defined(OFC_PERF_STATS)
+          perf_request_stop(g_measurement, pqueue_overlapped, 0);
+#endif
 	} else {
 #if defined(OFC_PERF_STATS)
-	  ofc_perf_stop (Overlapped->perf_id, Overlapped->stamp,
-			 Overlapped->dwResult) ;
+          perf_request_stop(g_measurement, pqueue_overlapped, Overlapped->dwResult);
 #endif
 	  *lpNumberOfBytesTransferred = Overlapped->dwResult;
 	  ret = OFC_TRUE;
@@ -1461,6 +1499,9 @@ OfcFSLinuxGetOverlappedResult(OFC_HANDLE hFile,
 				(OFC_DWORD_PTR)
 				TranslateError(EINPROGRESS));
       }
+#if defined(OFC_PERF_STATS)
+      perf_rt_stop(prt_overlapped);
+#endif
       ofc_handle_unlock(hOverlapped);
     }
   }
@@ -1910,6 +1951,12 @@ OFC_VOID OfcFSLinuxStartup(OFC_VOID)
   ofc_fs_register(OFC_FST_LINUX, &OfcFSLinuxInfo);
 
   OfcFSLinuxAIOFreeQ = ofc_queue_create();
+#if defined(OFC_PERF_STATS)
+  prt_read = perf_rt_create(g_measurement, TSTR("Linux Read"), 0);
+  prt_write = perf_rt_create(g_measurement, TSTR("Linux Write"), 0);
+  pqueue_read = perf_queue_create(g_measurement, TSTR("Linux Read"), 0);
+  pqueue_write = perf_queue_create(g_measurement, TSTR("Linux Write"), 0);
+#endif
   g_instance = 0;
 }
 
@@ -1937,6 +1984,12 @@ OFC_VOID OfcFSLinuxShutdown(OFC_VOID)
   }
   ofc_queue_destroy(OfcFSLinuxAIOFreeQ);
   OfcFSLinuxAIOFreeQ = OFC_HANDLE_NULL;
+#if defined(OFC_PERF_STATS)
+  perf_rt_destroy(g_measurement, prt_read);
+  perf_rt_destroy(g_measurement, prt_write);
+  perf_queue_destroy(g_measurement, pqueue_read);
+  perf_queue_destroy(g_measurement, pqueue_write);
+#endif
 }
 
 int OfcFSLinuxGetFD(OFC_HANDLE hFile)
