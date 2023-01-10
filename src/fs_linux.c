@@ -1592,9 +1592,61 @@ OfcFSLinuxSetFileInformationByHandle(OFC_HANDLE hFile,
       ret = OFC_TRUE;
       break;
 
-    case OfcFileRenameInfo:
     case OfcFileAllocationInfo:
     default:
+      ofc_thread_set_variable(OfcLastError,
+			      OFC_ERROR_NOT_SUPPORTED);
+      break;
+
+    case OfcFileRenameInfo:
+      {
+	OFC_FILE_RENAME_INFO *rename_info;
+	OFC_TCHAR *to_name;
+	OFC_CHAR *sztoname;
+	int status;
+	OFC_CHAR *p;
+
+	if (lpFileInformation != OFC_NULL) {
+	  rename_info = lpFileInformation;
+
+	  /* get the to name */
+	  to_name = ofc_malloc(rename_info->FileNameLength +
+			       sizeof(OFC_TCHAR));
+	  ofc_tstrncpy(to_name, rename_info->FileName,
+		       (rename_info->FileNameLength /
+			sizeof(OFC_TCHAR)));
+	  to_name[rename_info->FileNameLength / sizeof(OFC_TCHAR)] =
+	    TCHAR_EOS;
+
+	  sztoname = ofc_tstr2cstr(to_name);
+	  /* convert \\ to / */
+	  for (p = sztoname; *p != '\0'; p++)
+	    if (*p == '\\')
+	      *p = '/';
+
+	  if (rename_info->ReplaceIfExists) {
+	    /*
+	     * Try to remove the target (don't care what it is)
+	     * and don't care if it fails
+	     */
+	    rmdir(sztoname);
+	    unlink(sztoname);
+	  }
+
+	  status = rename(context->name, sztoname);
+	  ofc_free(context->name);
+	  context->name = sztoname;
+
+	  ofc_free(to_name);
+
+	  if (status == 0)
+	    ret = OFC_TRUE;
+	  else
+	    ofc_thread_set_variable
+	      (OfcLastError,
+	       (OFC_DWORD_PTR) TranslateError(errno));
+	}
+      }
       break;
 
     case OfcFileEndOfFileInfo: {
