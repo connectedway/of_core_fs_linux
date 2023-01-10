@@ -1131,11 +1131,20 @@ OfcFSLinuxFindNextFile(OFC_HANDLE hFindFile,
 	  {
 	    *more = OFC_TRUE;
 	  }
+	else
+	  ofc_thread_set_variable(OfcLastError,
+				  OFC_ERROR_NO_MORE_FILES);
       }
     else
-      ofc_thread_set_variable(OfcLastError,
-			      (OFC_DWORD_PTR) TranslateError(errno));
-
+      {
+	if (context->nextDirent == OFC_NULL)
+	  ofc_thread_set_variable(OfcLastError,
+				  OFC_ERROR_NO_MORE_FILES);
+	else
+	  ofc_thread_set_variable(OfcLastError,
+				  (OFC_DWORD_PTR) TranslateError(errno));
+      }
+	  
     ofc_handle_unlock(hFindFile);
   }
 
