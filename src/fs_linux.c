@@ -968,7 +968,6 @@ static OFC_INT read_dir (OFC_CHAR *pattern, DIR * dir,
 			 struct dirent **pdirent)
 {
   OFC_BOOL done ;
-  OFC_INT ret ;
 
   done = OFC_FALSE ;
 
@@ -1097,7 +1096,6 @@ OfcFSLinuxFindNextFile(OFC_HANDLE hFindFile,
 		       OFC_LPWIN32_FIND_DATAW lpFindFileData,
 		       OFC_BOOL *more)
 {
-  struct dirent *dirent;
   OFC_FS_LINUX_CONTEXT *context;
   OFC_BOOL ret;
   OFC_CHAR *pathname;
