@@ -1082,8 +1082,12 @@ OfcFSLinuxFindFirstFile(OFC_LPCTSTR lpFileName,
     }
 
     if (context->dir == NULL) {
-      ofc_thread_set_variable(OfcLastError,
-			      (OFC_DWORD_PTR) TranslateError(errno));
+      if (errno == 0)
+        ofc_thread_set_variable(OfcLastError, OFC_ERROR_NO_MORE_FILES);
+      else
+        ofc_thread_set_variable(OfcLastError,
+                                (OFC_DWORD_PTR) TranslateError(errno));
+
       free_dir_context(context) ;
     } else
       hRet = ofc_handle_create(OFC_HANDLE_FSLINUX_FILE, context);
