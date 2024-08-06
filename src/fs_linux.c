@@ -716,6 +716,19 @@ GetWin32FileAttributeData(OFC_CHAR *asciiName,
   return (ret);
 }
 
+static OFC_BOOL GetWin32FileInternalInfo (int fd,
+					  OFC_CHAR *name,
+					  OFC_FILE_INTERNAL_INFO *lpFileInformation)
+{
+  OFC_BOOL ret ;
+
+  ret = OFC_TRUE ;
+
+  lpFileInformation->IndexNumber = 0L;
+
+  return (ret) ;
+}
+
 static OFC_BOOL GetWin32FileBasicInfo(int fd,
                                       OFC_CHAR *name,
                                       OFC_FILE_BASIC_INFO *lpFileInformation)
@@ -792,6 +805,94 @@ static OFC_BOOL GetWin32FileBasicInfo(int fd,
   }
 
   return (ret);
+}
+
+static OFC_BOOL GetWin32FileNetworkOpenInfo (int fd,
+					     OFC_CHAR *name,
+					     OFC_FILE_NETWORK_OPEN_INFO *lpFileInformation)
+{
+  OFC_BOOL ret ;
+  struct stat sb ;
+  int status ;
+  OFC_FILETIME filetime ;
+
+  ret = OFC_FALSE ;
+
+  if (fd == -1)
+    {
+      status = stat (name, &sb) ;
+      if (status == -1)
+	{
+	  /*
+	   * See if it's a link.  If so, we still want to show it.  The reason
+	   * we use stat rather then lstat initially is we do want the
+	   * target of the link.  We only want to revert to the link when
+	   * the target returns an error.
+	   */
+	  status = lstat (name, &sb) ;
+	}
+    }
+  else
+    {
+      status = fstat (fd, &sb) ;
+    }
+
+  if (status >= 0)
+    {
+      epoch_time_to_file_time(sb.st_mtime, sb.st_mtimensec, &filetime);
+#if defined(OFC_64BIT_INTEGER)
+      lpFileInformation->CreationTime =
+	((OFC_LARGE_INTEGER) filetime.dwHighDateTime << 32) |
+	(OFC_LARGE_INTEGER) filetime.dwLowDateTime ;
+      lpFileInformation->LastWriteTime =
+	((OFC_LARGE_INTEGER) filetime.dwHighDateTime << 32) |
+	(OFC_LARGE_INTEGER) filetime.dwLowDateTime ;
+#else
+      lpFileInformation->CreationTime.high = filetime.dwHighDateTime ;
+      lpFileInformation->CreationTime.low = filetime.dwLowDateTime ;
+      lpFileInformation->LastWriteTime.high = filetime.dwHighDateTime ;
+      lpFileInformation->LastWriteTime.low = filetime.dwLowDateTime ;
+#endif
+      epoch_time_to_file_time(sb.st_atime, sb.st_atimensec, &filetime);
+#if defined(OFC_64BIT_INTEGER)
+      lpFileInformation->LastAccessTime =
+	((OFC_LARGE_INTEGER) filetime.dwHighDateTime << 32) |
+	(OFC_LARGE_INTEGER) filetime.dwLowDateTime ;
+#else
+      lpFileInformation->LastAccessTime.high = filetime.dwHighDateTime ;
+      lpFileInformation->LastAccessTime.low = filetime.dwLowDateTime ;
+#endif
+      epoch_time_to_file_time(sb.st_ctime, sb.st_ctimensec, &filetime);
+#if defined(OFC_64BIT_INTEGER)
+      lpFileInformation->ChangeTime =
+	((OFC_LARGE_INTEGER) filetime.dwHighDateTime << 32) |
+	(OFC_LARGE_INTEGER) filetime.dwLowDateTime ;
+      lpFileInformation->AllocationSize =
+	sb.st_blocks * OFC_FS_LINUX_BLOCK_SIZE;
+      lpFileInformation->EndOfFile = sb.st_size ;
+#else
+      lpFileInformation->ChangeTime.high = filetime.dwHighDateTime ;
+      lpFileInformation->ChangeTime.low = filetime.dwLowDateTime ;
+
+      lpFileInformation->AllocationSize.low =
+	sb.st_blocks * OFC_FS_LINUX_BLOCK_SIZE;
+      lpFileInformation->AllocationSize.high = 0;
+      lpFileInformation->EndOfFile.low = sb.st_size ;
+      lpFileInformation->EndOfFile.high = 0 ;
+#endif
+      lpFileInformation->FileAttributes = 0 ;
+      /*
+       * We do not support hidden files or System Files or Archive Files
+       * or temporary or sparse or compressed,or offline, or encrypted,
+       * or virtual
+       */
+      if (sb.st_mode & S_IFDIR)
+	lpFileInformation->FileAttributes |= OFC_FILE_ATTRIBUTE_DIRECTORY ;
+      if (lpFileInformation->FileAttributes == 0)
+	lpFileInformation->FileAttributes |= OFC_FILE_ATTRIBUTE_NORMAL ;
+      ret = OFC_TRUE ;
+    }
+  return (ret) ;
 }
 
 static OFC_BOOL
@@ -1234,6 +1335,24 @@ OfcFSLinuxGetFileInformationByHandleEx
 			    (OFC_DWORD_PTR) TranslateError(EPERM));
   } else {
     switch (FileInformationClass) {
+    case OfcFileNetworkOpenInfo:
+      if (dwBufferSize >= sizeof (OFC_FILE_NETWORK_OPEN_INFO))
+	{
+	  ret = GetWin32FileNetworkOpenInfo (context->fd,
+					     context->name,
+					     lpFileInformation) ;
+	}
+      break ;
+
+    case OfcFileInternalInformation:
+      if (dwBufferSize >= sizeof (OFC_FILE_INTERNAL_INFO))
+	{
+	  ret = GetWin32FileInternalInfo (context->fd,
+					  context->name,
+					  lpFileInformation) ;
+	}
+      break ;
+
     case OfcFileBasicInfo:
       if (dwBufferSize >= sizeof(OFC_FILE_BASIC_INFO)) {
 	ret = GetWin32FileBasicInfo(context->fd,
@@ -1243,6 +1362,7 @@ OfcFSLinuxGetFileInformationByHandleEx
       break;
 
     case OfcFileStandardInfo:
+    case OfcFileInfoStandard:
       if (dwBufferSize >= sizeof(OFC_FILE_STANDARD_INFO)) {
 	ret = GetWin32FileStandardInfo(context->fd,
 				       context->name,
@@ -1273,7 +1393,6 @@ OfcFSLinuxGetFileInformationByHandleEx
     case OfcFileRenameInfo:
     case OfcFileDispositionInfo:
     case OfcFileAllocationInfo:
-    case OfcFileInfoStandard:
       /*
        * These are for sets. They don't apply for get
        */
